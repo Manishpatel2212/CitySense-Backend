@@ -209,6 +209,20 @@ app.get("/api/confirmed-potholes", (req, res) => {
             ...new Set(group.detections.map(d => d.busId))
         ];
 
+        const severityRank = {
+            low: 1,
+            medium: 2,
+            high: 3,
+            critical: 4
+        };
+
+        const severity = group.detections.reduce((highest, detection) => {
+            const currentSeverity = detection.detection.severity;
+            return severityRank[currentSeverity.toLowerCase()] > severityRank[highest.toLowerCase()]
+                ? currentSeverity
+                : highest;
+        }, group.detections[0].detection.severity);
+
         const averageConfidence =
             group.detections.reduce(
                 (sum, d) => sum + d.detection.confidence,
@@ -227,9 +241,13 @@ app.get("/api/confirmed-potholes", (req, res) => {
             busesDetected: uniqueBuses,
             totalDetections: group.detections.length,
             uniqueBusCount: uniqueBuses.length,
+            confirmationPercentage: Number(
+                Math.min((uniqueBuses.length / MIN_BUSES_REQUIRED) * 100, 100).toFixed(2)
+            ),
             averageConfidence: Number(
                 averageConfidence.toFixed(2)
             ),
+            severity,
             status: isConfirmed ? "CONFIRMED" : "UNVERIFIED",
             verification: isConfirmed
                 ? "Multiple buses detected this pothole"

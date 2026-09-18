@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Bus,
@@ -22,6 +22,36 @@ import ProfessionalMapView from './components/ProfessionalMapView';
 export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [sidebarTheme, setSidebarTheme] = useState('light');
+  const [potholes, setPotholes] = useState([]);
+  const [potholesLoading, setPotholesLoading] = useState(true);
+  const [potholesError, setPotholesError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch('http://localhost:5000/api/confirmed-potholes', { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        setPotholes(data.confirmedPotholes || []);
+        setPotholesError('');
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setPotholesError('Unable to load confirmed potholes.');
+        }
+      })
+      .finally(() => setPotholesLoading(false));
+
+    return () => controller.abort();
+  }, []);
+
+  const formatPercentage = (value) => `${(Number(value || 0) * 100).toFixed(1)}%`;
+  const firstPothole = potholes[0];
 
   // Dynamic View Renderer Based on Active Navigation Tab
   const renderMainContent = () => {
@@ -33,7 +63,7 @@ export default function App() {
             <div className="grid grid-cols-4 gap-5">
               {[
                 { title: 'Active Buses', count: '48', sub: '↑ 6% from yesterday', color: 'bg-[#00A3FF]', icon: Bus },
-                { title: 'Road Defects Detected', count: '12', sub: '↑ 3 new today', color: 'bg-purple-600', icon: AlertTriangle },
+                { title: 'Road Defects Detected', count: potholesLoading ? '...' : potholes.length, sub: 'Confirmed potholes', color: 'bg-purple-600', icon: AlertTriangle },
                 { title: 'Traffic Congestion Zones', count: '5', sub: '↑ 2 new today', color: 'bg-orange-500', icon: Bus },
                 { title: 'Pedestrian Risk Areas', count: '3', sub: '↑ 1 new today', color: 'bg-emerald-500', icon: Users }
               ].map((card, i) => {
@@ -61,7 +91,7 @@ export default function App() {
             <div className="grid grid-cols-3 gap-6">
               {/* Central Map Section */}
               <div className="col-span-2">
-                <ProfessionalMapView />
+                <ProfessionalMapView potholes={potholes} loading={potholesLoading} error={potholesError} />
               </div>
 
               {/* Right Panel AI Alerts & System Status */}
@@ -80,7 +110,7 @@ export default function App() {
 
                   <div className="space-y-3">
                     {[
-                      { type: 'Road Defect Detected', desc: 'Severe Pothole on AB Road Corridor', time: '11:20 AM', level: 'High', badge: 'bg-red-50 text-red-600 border-red-200' },
+                      ...(firstPothole ? [{ type: 'Road Defect Detected', desc: `${firstPothole.severity} pothole at ${firstPothole.location.latitude.toFixed(4)}, ${firstPothole.location.longitude.toFixed(4)}`, time: 'Live', level: firstPothole.severity, badge: 'bg-red-50 text-red-600 border-red-200' }] : []),
                       { type: 'Heavy Traffic Congestion', desc: 'Vijay Nagar Square to Palasia Junction', time: '11:15 AM', level: 'High', badge: 'bg-red-50 text-red-600 border-red-200' },
                       { type: 'Pedestrian Risk', desc: 'School crossing zone - Near Green Park', time: '10:52 AM', level: 'Medium', badge: 'bg-amber-50 text-amber-600 border-amber-200' },
                     ].map((alert, idx) => (
@@ -134,7 +164,7 @@ export default function App() {
       case 'Live Fleet':
         return (
           <div className="h-[calc(100vh-140px)] w-full">
-            <ProfessionalMapView />
+            <ProfessionalMapView potholes={potholes} loading={potholesLoading} error={potholesError} />
           </div>
         );
 
@@ -173,16 +203,23 @@ export default function App() {
               </button>
             </div>
             <div className="space-y-3">
-              {[
-                { id: 'ALT-901', title: 'Severe Pothole Cluster', loc: 'AB Road, Near Square', conf: '96.4%', severity: 'High', status: 'Pending Repair' },
-                { id: 'ALT-902', title: 'Road Crack Surface Defect', loc: 'Palasia Corridor', conf: '88.1%', severity: 'Medium', status: 'In Review' },
-                { id: 'ALT-903', title: 'Traffic Bottleneck Spike', loc: 'Rajwada Market Crossing', conf: '92.0%', severity: 'High', status: 'Resolved' },
-              ].map((item) => (
+              {potholesLoading ? <p className="text-sm text-gray-500">Loading confirmed potholes...</p> : potholesError ? <p className="text-sm text-red-600">{potholesError}</p> : potholes.length === 0 ? <p className="text-sm text-gray-500">No confirmed potholes found.</p> : potholes.map((pothole) => {
+                const item = {
+                  id: pothole.potholeId,
+                  title: `${pothole.severity} Pothole`,
+                  loc: `${pothole.location.latitude.toFixed(5)}, ${pothole.location.longitude.toFixed(5)}`,
+                  conf: formatPercentage(pothole.averageConfidence),
+                  severity: pothole.severity,
+                  status: pothole.status,
+                  buses: pothole.uniqueBusCount,
+                  confirmation: `${pothole.confirmationPercentage}%`
+                };
+                return (
                 <div key={item.id} className="p-4 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-[#00A3FF]">{item.id}</span>
                     <h3 className="text-sm font-bold text-gray-900">{item.title}</h3>
-                    <p className="text-xs text-gray-500">{item.loc} • AI Confidence: {item.conf}</p>
+                    <p className="text-xs text-gray-500">{item.loc} • AI Confidence: {item.conf} • Buses: {item.buses} • Confirmation: {item.confirmation}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs px-3 py-1 rounded-full font-bold bg-red-100 text-red-700 border border-red-200">
@@ -193,7 +230,8 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         );

@@ -18,7 +18,7 @@ const hazardIcon = L.divIcon({
     iconAnchor: [11, 11]
 });
 
-// Expanded Mock Dataset (Total 7 Buses & 6 Road Hazards)
+// Fleet positions remain local because this endpoint only provides potholes.
 const mockData = [
     // --- BUSES (Blue Circular Markers) ---
     { id: 'BUS-104', type: 'bus', position: [22.7196, 75.8577], speed: '42 km/h', route: 'AB Road Corridor', driver: 'Rajesh Kumar', status: 'On Time' },
@@ -29,19 +29,25 @@ const mockData = [
     { id: 'BUS-622', type: 'bus', position: [22.6920, 75.8320], speed: '33 km/h', route: 'Rau Circle Express', driver: 'Deepak Joshi', status: 'On Time' },
     { id: 'BUS-734', type: 'bus', position: [22.7550, 75.8900], speed: '41 km/h', route: 'MR-10 Bypass Corridor', driver: 'Anil Yadav', status: 'On Time' },
 
-    // --- ROAD DEFECTS / HAZARDS (Red Triangle Markers) ---
-    { id: 'DEFECT-01', type: 'defect', position: [22.7150, 75.8600], desc: 'Severe Pothole Cluster', confidence: '94.2%', severity: 'High', area: 'Near Geeta Bhawan' },
-    { id: 'DEFECT-02', type: 'defect', position: [22.7290, 75.8720], desc: 'Road Surface Cracks', confidence: '89.5%', severity: 'Medium', area: 'Vijay Nagar Main Rd' },
-    { id: 'DEFECT-03', type: 'defect', position: [22.7100, 75.8500], desc: 'Unmarked Speed Breaker', confidence: '91.8%', severity: 'Medium', area: 'Tower Square Corridor' },
-    { id: 'DEFECT-04', type: 'defect', position: [22.7380, 75.8850], desc: 'Deep Surface Trench', confidence: '96.1%', severity: 'High', area: 'LIG Square Crossing' },
-    { id: 'DEFECT-05', type: 'defect', position: [22.6980, 75.8380], desc: 'Waterlogging Water Trap', confidence: '87.4%', severity: 'Low', area: 'Rajendra Nagar Main' },
-    { id: 'DEFECT-06', type: 'defect', position: [22.7480, 75.8980], desc: 'Open Manhole Hazard', confidence: '98.0%', severity: 'Critical', area: 'Bypass Underpass' }
 ];
 
-export default function ProfessionalMapView() {
+export default function ProfessionalMapView({ potholes, loading, error }) {
     const [filter, setFilter] = useState('All');
+    const potholePoints = potholes.map((pothole) => ({
+        id: pothole.potholeId,
+        type: 'defect',
+        position: [pothole.location.latitude, pothole.location.longitude],
+        desc: `${pothole.severity} Pothole`,
+        confidence: `${(Number(pothole.averageConfidence || 0) * 100).toFixed(1)}%`,
+        area: `${pothole.location.latitude.toFixed(5)}, ${pothole.location.longitude.toFixed(5)}`,
+        severity: pothole.severity,
+        uniqueBusCount: pothole.uniqueBusCount,
+        confirmationPercentage: pothole.confirmationPercentage,
+        status: pothole.status
+    }));
+    const points = [...mockData, ...potholePoints];
 
-    const filteredPoints = mockData.filter(item => {
+    const filteredPoints = points.filter(item => {
         if (filter === 'Live Fleet') return item.type === 'bus';
         if (filter === 'Road Defects') return item.type === 'defect';
         return true;
@@ -58,7 +64,7 @@ export default function ProfessionalMapView() {
             <div className="flex items-center justify-between mb-4">
                 <div>
                     <h2 className="font-bold text-gray-900 text-base">Live Fleet & City Intelligence Map</h2>
-                    <p className="text-[11px] text-gray-400">7 Active Buses • 6 AI Detected Defects</p>
+                    <p className="text-[11px] text-gray-400">7 Active Buses • {loading ? 'Loading' : potholes.length} AI Detected Defects</p>
                 </div>
                 <div className="flex gap-2 text-xs font-medium bg-gray-100 p-1 rounded-xl">
                     {['All', 'Live Fleet', 'Road Defects'].map((tab) => (
@@ -76,6 +82,7 @@ export default function ProfessionalMapView() {
 
             {/* Map View Frame */}
             <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 relative z-0">
+                {error && <div className="absolute top-2 left-2 right-2 z-[1000] rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 border border-red-200">{error}</div>}
                 <MapContainer center={[22.7196, 75.8577]} zoom={12.5} style={{ height: '100%', width: '100%' }}>
                     <TileLayer
                         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -108,6 +115,9 @@ export default function ProfessionalMapView() {
                                             <p className="text-red-600 font-bold">{point.desc}</p>
                                             <p className="text-gray-600"><span className="font-semibold text-gray-800">Loc:</span> {point.area}</p>
                                             <p className="text-gray-500 text-[10px]">AI Confidence: <span className="font-semibold text-gray-700">{point.confidence}</span></p>
+                                            <p className="text-gray-500 text-[10px]">Severity: <span className="font-semibold text-gray-700">{point.severity}</span></p>
+                                            <p className="text-gray-500 text-[10px]">Buses: <span className="font-semibold text-gray-700">{point.uniqueBusCount}</span> | Confirmation: <span className="font-semibold text-gray-700">{point.confirmationPercentage}%</span></p>
+                                            <p className="text-gray-500 text-[10px]">Status: <span className="font-semibold text-gray-700">{point.status}</span></p>
                                         </div>
                                     )}
                                 </div>
